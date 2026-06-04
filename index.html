@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <title>Моя Монополия Онлайн</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <div id="startScreen" class="start-screen">
+        <h1>Моя Монополия</h1>
+        <p>Локальный MVP. Позже подключим онлайн-комнаты.</p>
+
+        <label>
+          Количество игроков
+          <select id="playersCount">
+            <option value="2">2 игрока</option>
+            <option value="3">3 игрока</option>
+            <option value="4">4 игрока</option>
+            <option value="5">5 игроков</option>
+          </select>
+        </label>
+
+        <div class="local-settings">
+          <label>
+            Стартовые деньги
+            <input id="localStartingMoney" type="number" min="500" max="5000" step="100" value="1500" />
+          </label>
+          <label>
+            Бонус за круг
+            <input id="localPassStartBonus" type="number" min="0" max="1000" step="50" value="200" />
+          </label>
+          <label>
+            <input id="localAuctionsEnabled" type="checkbox" checked />
+            Аукционы
+          </label>
+        </div>
+
+        <button id="startGameBtn">Начать игру</button>
+      </div>
+
+      <main id="gameScreen" class="game-screen hidden">
+        <section class="board-wrap">
+          <div id="board" class="board"></div>
+        </section>
+
+        <aside class="side-panel">
+          <button id="fullscreenBtn" class="secondary-btn">
+            ⛶ Полный экран
+          </button>
+          <button id="newGameBtn" class="secondary-btn">
+            Новая игра
+          </button>
+
+          <div class="turn-card">
+            <h2 id="currentPlayerName">Игрок</h2>
+            <p id="diceResult">Кубики: —</p>
+            <p id="turnTimer" class="turn-timer">Таймер: —</p>
+            <button id="rollDiceBtn">Бросить кубики</button>
+            <button id="skipDisconnectedBtn" class="secondary-btn hidden">
+              Пропустить отключённого
+            </button>
+          </div>
+
+          <div id="cellInfo" class="cell-info">
+            <h3>Клетка</h3>
+            <p>Информация появится после хода.</p>
+          </div>
+
+          <div id="propertyActions" class="property-actions hidden">
+            <button id="buyPropertyBtn">Купить</button>
+            <button id="skipPropertyBtn" class="secondary-btn">Пропустить</button>
+          </div>
+
+          <div id="playersList" class="players-list"></div>
+
+          <div id="chatBox" class="chat-box hidden"></div>
+
+          <div id="gameLog" class="game-log"></div>
+        </aside>
+      </main>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>

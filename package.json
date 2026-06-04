@@ -1,0 +1,19 @@
+{
+  "name": "online-monopoly",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Online Monopoly-style board game with Socket.IO rooms.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "start:prod": "NODE_ENV=production node server.js",
+    "check": "node --check server.js && node --check js/main.js && node --check js/gameLogic.js && node --check js/render.js && node --check js/data.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.18.3",
+    "socket.io": "^4.7.5"
+  }
+}
