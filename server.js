@@ -22,6 +22,7 @@ import {
   redeemProperty,
   rejectTrade,
   rollDiceAndProcessTurn,
+  sellProperty,
   sellHouse,
   skipRequiredAction,
   skipPendingProperty,
@@ -460,6 +461,8 @@ io.on("connection", (socket) => {
 
     if (action === "sell-house") {
       room.state = sellHouse(room.state, player.id, cellId);
+    } else if (action === "sell-property") {
+      room.state = sellProperty(room.state, player.id, cellId);
     } else if (action === "mortgage") {
       room.state = mortgageProperty(room.state, player.id, cellId);
     } else if (action === "redeem") {
@@ -551,6 +554,8 @@ io.on("connection", (socket) => {
               "Предложение создано, но второй игрок сейчас не подключён к комнате.",
             );
           }
+          addSystemChatMessage(room, room.state.lastMessage);
+          io.to(room.code).emit("chatUpdate", room.chat ?? []);
         } else {
           socket.emit(
             "errorMessage",
@@ -558,18 +563,34 @@ io.on("connection", (socket) => {
           );
         }
       } else if (action === "accept") {
+        const previousTradeId = room.state.pendingTrade?.id;
         room.state = acceptTrade(room.state, player.id);
+        if (previousTradeId && !room.state.pendingTrade) {
+          addSystemChatMessage(room, room.state.lastMessage);
+          io.to(room.code).emit("chatUpdate", room.chat ?? []);
+        }
       } else if (action === "reject") {
+        const previousTradeId = room.state.pendingTrade?.id;
         room.state = rejectTrade(room.state, player.id);
+        if (previousTradeId && !room.state.pendingTrade) {
+          addSystemChatMessage(room, room.state.lastMessage);
+          io.to(room.code).emit("chatUpdate", room.chat ?? []);
+        }
       }
 
       emitGameUpdate(room);
     },
   );
 
-  socket.on("sendChatMessage", ({ roomCode, playerId, message }) => {
+  socket.on("sendChatMessage", ({ roomCode, playerId, message }, reply) => {
+    const respond = (payload) => {
+      if (typeof reply === "function") reply(payload);
+    };
     const room = rooms.get(normalizeRoomCode(roomCode));
-    if (!room) return;
+    if (!room) {
+      respond({ ok: false, message: "Комната не найдена." });
+      return;
+    }
 
     const player = getRoomPlayerBySocketOrId(room, socket, playerId);
     if (!player) {
@@ -577,16 +598,35 @@ io.on("connection", (socket) => {
         "errorMessage",
         "Подключение к комнате потеряно. Обновите страницу и вернитесь в комнату.",
       );
+      respond({ ok: false, message: "Подключение к комнате потеряно." });
       return;
     }
 
     const text = sanitizeChatMessage(message);
-    if (!text) return;
+    if (!text) {
+      respond({ ok: false, message: "Введите сообщение." });
+      return;
+    }
 
     addChatMessage(room, player, text);
     io.to(room.code).emit("chatUpdate", room.chat);
     emitRoom(room.code);
     persistRooms();
+    respond({ ok: true, chat: room.chat });
+  });
+
+  socket.on("chatTyping", ({ roomCode, playerId, isTyping }) => {
+    const room = rooms.get(normalizeRoomCode(roomCode));
+    if (!room) return;
+
+    const player = getRoomPlayerBySocketOrId(room, socket, playerId);
+    if (!player) return;
+
+    socket.to(room.code).emit("chatTypingUpdate", {
+      playerId: player.id,
+      playerName: player.name,
+      isTyping: Boolean(isTyping),
+    });
   });
 
   socket.on("skipDisconnectedPlayer", ({ roomCode, playerId }) => {
@@ -597,16 +637,93 @@ io.on("connection", (socket) => {
     if (!player) return;
 
     const requiredPlayerId = getRequiredActionPlayerId(room.state);
-    const requiredRoomPlayer = room.players.find((item) => item.id === requiredPlayerId);
-    const requiredGamePlayer = room.state.players.find((item) => item.id === requiredPlayerId);
+    const requiredRoomPlayer = room.players.find(
+      (item) => item.id === requiredPlayerId,
+    );
+    const requiredGamePlayer = room.state.players.find(
+      (item) => item.id === requiredPlayerId,
+    );
 
-    if (!requiredPlayerId || (!requiredRoomPlayer?.disconnected && !requiredGamePlayer?.disconnected)) {
-      socket.emit("errorMessage", "Сейчас нет отключённого игрока, которого можно пропустить.");
+    if (
+      !requiredPlayerId ||
+      (!requiredRoomPlayer?.disconnected && !requiredGamePlayer?.disconnected)
+    ) {
+      socket.emit(
+        "errorMessage",
+        "Сейчас нет отключённого игрока, которого можно пропустить.",
+      );
       return;
     }
 
     room.state = skipRequiredAction(room.state, "Отключённый игрок пропущен");
     emitGameUpdate(room);
+  });
+
+  socket.on("leaveRoom", ({ roomCode, playerId }, reply) => {
+    const respond = (payload) => {
+      if (typeof reply === "function") reply(payload);
+    };
+    const normalizedRoomCode = normalizeRoomCode(roomCode);
+    const room = rooms.get(normalizedRoomCode);
+
+    if (!room) {
+      respond({ ok: true });
+      return;
+    }
+
+    const player = getRoomPlayerBySocketOrId(room, socket, playerId);
+    if (!player) {
+      respond({ ok: true });
+      return;
+    }
+
+    socket.leave(room.code);
+    socket.data.roomCode = null;
+
+    if (room.started) {
+      player.disconnected = true;
+      player.ready = false;
+      player.socketId = null;
+      addRoomLog(room, `${player.name} покинул игру.`);
+
+      if (room.hostId === player.id) {
+        transferHost(room);
+      }
+
+      if (room.state) {
+        const gamePlayer = room.state.players.find((item) => item.id === player.id);
+        if (gamePlayer) gamePlayer.disconnected = true;
+      }
+
+      emitRoom(room.code);
+      emitGameUpdate(room, { resetTimer: false });
+      persistRooms();
+      respond({ ok: true });
+      return;
+    }
+
+    room.players = room.players.filter((item) => item.id !== player.id);
+    addRoomLog(room, `${player.name} покинул комнату.`);
+
+    if (!room.players.length) {
+      rooms.delete(normalizedRoomCode);
+      persistRooms();
+      respond({ ok: true });
+      return;
+    }
+
+    if (room.hostId === player.id) {
+      room.hostId = room.players[0].id;
+      addRoomLog(room, `${room.players[0].name} теперь хост комнаты.`);
+    }
+
+    room.players.forEach((item) => {
+      item.ready = false;
+    });
+
+    emitRoom(room.code);
+    persistRooms();
+    respond({ ok: true });
   });
 
   socket.on("disconnect", () => {
@@ -789,12 +906,13 @@ function applyTurnTimer(room, resetTimer = true) {
   }
 
   const currentDeadline = Date.parse(room.state.turnDeadlineAt ?? "");
-  const hasActiveDeadline = !Number.isNaN(currentDeadline) && currentDeadline > Date.now();
+  const hasActiveDeadline =
+    !Number.isNaN(currentDeadline) && currentDeadline > Date.now();
 
   if (resetTimer || !hasActiveDeadline) {
     const turnTimeMs =
-      (room.state.settings?.turnTimeSeconds ?? room.settings?.turnTimeSeconds) * 1000 ||
-      FALLBACK_TURN_TIME_MS;
+      (room.state.settings?.turnTimeSeconds ?? room.settings?.turnTimeSeconds) *
+        1000 || FALLBACK_TURN_TIME_MS;
     room.state.turnDeadlineAt = new Date(Date.now() + turnTimeMs).toISOString();
   }
 
@@ -1032,6 +1150,25 @@ function addChatMessage(room, player, message) {
   room.chat = room.chat.slice(-80);
 }
 
+function addSystemChatMessage(room, message) {
+  if (!message) return;
+  if (!Array.isArray(room.chat)) room.chat = [];
+
+  room.chat.push({
+    id: `sys_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    playerId: "system",
+    playerName: "Сделка",
+    tokenColor: "#f4b942",
+    time: new Date().toLocaleTimeString("ru-RU", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    message,
+  });
+
+  room.chat = room.chat.slice(-80);
+}
+
 function normalizeRoomCode(roomCode) {
   return String(roomCode ?? "")
     .trim()
@@ -1058,7 +1195,7 @@ function createRoomCode() {
 }
 
 const PORT = Number(process.env.PORT) || 3000;
-const HOST = process.env.HOST || "0.0.0.0";
+const HOST = process.env.HOST || "127.0.0.1";
 
 server.listen(PORT, HOST, () => {
   console.log(`Server started: http://${HOST}:${PORT}`);

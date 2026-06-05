@@ -85,6 +85,7 @@ export function createGameFromPlayers(players, settings = {}) {
     pendingTrade: null,
     auction: null,
     winnerId: null,
+    tradeHistory: [],
     logs: [createLogEntry("Игра началась.")],
   };
 }
@@ -472,6 +473,31 @@ export function sellHouse(state, playerId, cellId) {
   return state;
 }
 
+export function sellProperty(state, playerId, cellId) {
+  const player = getCurrentPlayer(state);
+  if (!canManageAssets(state, playerId) || !player || player.id !== playerId) return state;
+
+  const cell = getCellById(state, cellId);
+  if (!cell || cell.ownerId !== playerId) return state;
+
+  if ((cell.houses ?? 0) > 0) {
+    setMessage(state, `Перед продажей "${cell.title}" нужно продать дома на этой улице.`);
+    return state;
+  }
+
+  const refund = getMortgageValue(cell);
+  cell.ownerId = null;
+  cell.mortgaged = false;
+  cell.houses = 0;
+  player.properties = player.properties.filter((propertyId) => propertyId !== cell.id);
+  player.money += refund;
+
+  setMessage(state, `${player.name} продаёт "${cell.title}" банку и получает ${refund}₽.`);
+  finishDebtIfResolved(state, player);
+
+  return state;
+}
+
 export function mortgageProperty(state, playerId, cellId) {
   const player = getCurrentPlayer(state);
   if (!canManageAssets(state, playerId) || !player || player.id !== playerId) return state;
@@ -556,7 +582,9 @@ export function proposeTrade(state, fromPlayerId, toPlayerId, requestPropertyCel
     offerMoney: money,
   };
 
-  setMessage(state, `${fromPlayer.name} предлагает ${toPlayer.name}: ${money}₽ за "${cell.title}".`);
+  const message = `${fromPlayer.name} предлагает ${toPlayer.name}: ${money}₽ за "${cell.title}".`;
+  setMessage(state, message);
+  addTradeHistory(state, "offer", message);
 
   return state;
 }
@@ -571,13 +599,17 @@ export function acceptTrade(state, playerId) {
 
   if (!fromPlayer || !toPlayer || !cell || cell.ownerId !== toPlayer.id) {
     state.pendingTrade = null;
-    setMessage(state, "Сделка отменена: объект больше недоступен.");
+    const message = "Сделка отменена: объект больше недоступен.";
+    setMessage(state, message);
+    addTradeHistory(state, "cancel", message);
     return state;
   }
 
   if (fromPlayer.money < trade.offerMoney) {
     state.pendingTrade = null;
-    setMessage(state, "Сделка отменена: у покупателя уже не хватает денег.");
+    const message = "Сделка отменена: у покупателя уже не хватает денег.";
+    setMessage(state, message);
+    addTradeHistory(state, "cancel", message);
     return state;
   }
 
@@ -587,7 +619,9 @@ export function acceptTrade(state, playerId) {
   transferPropertyId(toPlayer, fromPlayer, cell.id);
 
   state.pendingTrade = null;
-  setMessage(state, `${toPlayer.name} принял сделку. "${cell.title}" переходит к ${fromPlayer.name} за ${trade.offerMoney}₽.`);
+  const message = `${toPlayer.name} принял сделку. "${cell.title}" переходит к ${fromPlayer.name} за ${trade.offerMoney}₽.`;
+  setMessage(state, message);
+  addTradeHistory(state, "accept", message);
 
   return state;
 }
@@ -601,7 +635,9 @@ export function rejectTrade(state, playerId) {
   const cell = getCellById(state, trade.requestPropertyCellId);
 
   state.pendingTrade = null;
-  setMessage(state, `${toPlayer?.name ?? "Игрок"} отклонил предложение ${fromPlayer?.name ?? "игрока"} по "${cell?.title ?? "объекту"}".`);
+  const message = `${toPlayer?.name ?? "Игрок"} отклонил предложение ${fromPlayer?.name ?? "игрока"} по "${cell?.title ?? "объекту"}".`;
+  setMessage(state, message);
+  addTradeHistory(state, "reject", message);
 
   return state;
 }
@@ -1093,6 +1129,15 @@ function addGameLog(state, message) {
   if (!Array.isArray(state.logs)) state.logs = [];
   state.logs.push(createLogEntry(message));
   state.logs = state.logs.slice(-40);
+}
+
+function addTradeHistory(state, type, message) {
+  if (!Array.isArray(state.tradeHistory)) state.tradeHistory = [];
+  state.tradeHistory.push({
+    ...createLogEntry(message),
+    type,
+  });
+  state.tradeHistory = state.tradeHistory.slice(-30);
 }
 
 function createLogEntry(message) {

@@ -24,9 +24,9 @@ export const propertyGroups = {
 export const boardData = [
   { id: "start", title: "Старт", type: "corner" },
   { id: "tverskaya", title: "ул. Тверская", type: "street", group: "blue", price: 100, rent: 20, houses: 0 },
+  { id: "sovetskaya", title: "ул. Советская", type: "street", group: "blue", price: 120, rent: 25, houses: 0 },
   { id: "chance_1", title: "Шанс", type: "chance" },
   { id: "coffee", title: "Кофейня", type: "business", group: null, price: 140, rent: 30, houses: 0 },
-  { id: "sovetskaya", title: "ул. Советская", type: "street", group: "blue", price: 120, rent: 25, houses: 0 },
   { id: "tax_1", title: "Налоговая", type: "tax" },
   { id: "print_shop", title: "Типография", type: "business", group: null, price: 160, rent: 35, houses: 0 },
   { id: "sadovaya", title: "ул. Садовая", type: "street", group: "blue", price: 140, rent: 30, houses: 0 },
@@ -35,9 +35,9 @@ export const boardData = [
   { id: "tver", title: "Деревня", type: "corner" },
 
   { id: "lesnaya", title: "ул. Лесная", type: "street", group: "green", price: 160, rent: 35, houses: 0 },
-  { id: "pharmacy", title: "Аптека", type: "business", group: null, price: 200, rent: 45, houses: 0 },
-  { id: "chance_2", title: "Шанс", type: "chance" },
   { id: "rechnaya", title: "ул. Речная", type: "street", group: "green", price: 180, rent: 40, houses: 0 },
+  { id: "chance_2", title: "Шанс", type: "chance" },
+  { id: "pharmacy", title: "Аптека", type: "business", group: null, price: 200, rent: 45, houses: 0 },
   { id: "factory", title: "Завод", type: "business", group: null, price: 240, rent: 55, houses: 0 },
   { id: "polevaya", title: "ул. Полевая", type: "street", group: "green", price: 200, rent: 45, houses: 0 },
   { id: "tax_2", title: "Налоговая", type: "tax" },
@@ -46,9 +46,9 @@ export const boardData = [
   { id: "parking", title: "Парковка", type: "corner" },
 
   { id: "parkovaya", title: "ул. Парковая", type: "street", group: "red", price: 240, rent: 55, houses: 0 },
-  { id: "cinema", title: "Кинотеатр", type: "business", group: null, price: 300, rent: 70, houses: 0 },
-  { id: "chance_3", title: "Шанс", type: "chance" },
   { id: "centralnaya", title: "ул. Центральная", type: "street", group: "red", price: 260, rent: 60, houses: 0 },
+  { id: "chance_3", title: "Шанс", type: "chance" },
+  { id: "cinema", title: "Кинотеатр", type: "business", group: null, price: 300, rent: 70, houses: 0 },
   { id: "bank_event_1", title: "Банк", type: "bank" },
   { id: "novaya", title: "ул. Новая", type: "street", group: "yellow", price: 280, rent: 65, houses: 0 },
   { id: "gift_2", title: "Подарок", type: "gift" },
@@ -61,9 +61,9 @@ export const boardData = [
   { id: "chance_4", title: "Шанс", type: "chance" },
   { id: "severnaya", title: "ул. Северная", type: "street", group: "purple", price: 360, rent: 85, houses: 0 },
   { id: "port", title: "Порт", type: "business", group: null, price: 450, rent: 110, houses: 0 },
-  { id: "glavnaya", title: "ул. Главная", type: "street", group: "purple", price: 400, rent: 100, houses: 0 },
   { id: "tax_3", title: "Налоговая", type: "tax" },
   { id: "corporation", title: "Корпорация", type: "business", group: null, price: 520, rent: 140, houses: 0 },
+  { id: "glavnaya", title: "ул. Главная", type: "street", group: "purple", price: 400, rent: 100, houses: 0 },
   { id: "prospekt", title: "Проспект", type: "street", group: "purple", price: 460, rent: 120, houses: 0 },
 ];
 

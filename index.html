@@ -13,74 +13,131 @@
     <div class="app">
       <div id="startScreen" class="start-screen">
         <h1>Моя Монополия</h1>
-        <p>Локальный MVP. Позже подключим онлайн-комнаты.</p>
+        <p>Создавайте комнаты, зовите друзей и торгуйтесь за улицы в реальном времени.</p>
 
-        <label>
-          Количество игроков
-          <select id="playersCount">
-            <option value="2">2 игрока</option>
-            <option value="3">3 игрока</option>
-            <option value="4">4 игрока</option>
-            <option value="5">5 игроков</option>
-          </select>
-        </label>
-
-        <div class="local-settings">
-          <label>
-            Стартовые деньги
-            <input id="localStartingMoney" type="number" min="500" max="5000" step="100" value="1500" />
-          </label>
-          <label>
-            Бонус за круг
-            <input id="localPassStartBonus" type="number" min="0" max="1000" step="50" value="200" />
-          </label>
-          <label>
-            <input id="localAuctionsEnabled" type="checkbox" checked />
-            Аукционы
-          </label>
+        <div id="modeSelect" class="mode-select">
+          <button id="localModeBtn" type="button">Локальная игра</button>
+          <button id="onlineModeBtn" type="button" class="secondary-btn">Онлайн игра</button>
         </div>
 
-        <button id="startGameBtn">Начать игру</button>
+        <div id="localPanel" class="mode-panel local-panel hidden">
+          <div class="panel-top">
+            <h2>Локальная игра</h2>
+            <button id="backToModesFromLocalBtn" type="button" class="secondary-btn small-btn">Назад</button>
+          </div>
+
+          <label>
+            Количество игроков
+            <select id="playersCount">
+              <option value="2">2 игрока</option>
+              <option value="3">3 игрока</option>
+              <option value="4">4 игрока</option>
+              <option value="5">5 игроков</option>
+            </select>
+          </label>
+
+          <div class="local-settings">
+            <label>
+              Стартовые деньги
+              <input id="localStartingMoney" type="number" min="500" max="5000" step="100" value="1500" />
+            </label>
+            <label>
+              Бонус за круг
+              <input id="localPassStartBonus" type="number" min="0" max="1000" step="50" value="200" />
+            </label>
+            <label>
+              <input id="localAuctionsEnabled" type="checkbox" checked />
+              Аукционы
+            </label>
+          </div>
+
+          <button id="startGameBtn">Начать локальную игру</button>
+        </div>
+
+        <div id="onlinePanel" class="mode-panel online-panel hidden"></div>
       </div>
 
       <main id="gameScreen" class="game-screen hidden">
+        <div id="playersStrip" class="players-strip" aria-label="Игроки"></div>
+
         <section class="board-wrap">
+          <div class="board-toolbar" aria-label="Вид поля">
+            <div class="board-mode-toggle">
+              <button id="boardMode2dBtn" type="button" class="active">2D</button>
+              <button id="boardMode3dBtn" type="button">3D</button>
+            </div>
+            <button id="resetBoardViewBtn" type="button" class="secondary-btn">Сбросить вид</button>
+            <label class="board-zoom-control">
+              <span>Зум</span>
+              <input id="boardZoomInput" type="range" min="80" max="150" value="100" />
+            </label>
+          </div>
+          <div class="board-legend" aria-label="Обозначения поля">
+            <span><i class="legend-current"></i>Ход</span>
+            <span><i class="legend-selected"></i>Выбрано</span>
+            <span><i class="legend-owner">И</i>Владелец</span>
+            <span><i class="legend-mortgage"></i>Залог</span>
+          </div>
           <div id="board" class="board"></div>
         </section>
 
         <aside class="side-panel">
-          <button id="fullscreenBtn" class="secondary-btn">
-            ⛶ Полный экран
-          </button>
-          <button id="newGameBtn" class="secondary-btn">
-            Новая игра
-          </button>
-
-          <div class="turn-card">
-            <h2 id="currentPlayerName">Игрок</h2>
-            <p id="diceResult">Кубики: —</p>
-            <p id="turnTimer" class="turn-timer">Таймер: —</p>
-            <button id="rollDiceBtn">Бросить кубики</button>
-            <button id="skipDisconnectedBtn" class="secondary-btn hidden">
-              Пропустить отключённого
+          <div class="side-actions">
+            <button id="sidebarToggleBtn" class="secondary-btn">
+              Свернуть
+            </button>
+            <button id="fullscreenBtn" class="secondary-btn">
+              ⛶ Полный экран
+            </button>
+            <button id="newGameBtn" class="secondary-btn">
+              Новая игра
             </button>
           </div>
 
-          <div id="cellInfo" class="cell-info">
-            <h3>Клетка</h3>
-            <p>Информация появится после хода.</p>
+          <div id="sideTabs" class="side-tabs" role="tablist" aria-label="Панель игры">
+            <button type="button" class="active" data-side-tab="turn">Ход</button>
+            <button type="button" data-side-tab="players">Игроки</button>
+            <button type="button" data-side-tab="log">Лог</button>
+            <button type="button" data-side-tab="chat">Чат</button>
           </div>
 
-          <div id="propertyActions" class="property-actions hidden">
-            <button id="buyPropertyBtn">Купить</button>
-            <button id="skipPropertyBtn" class="secondary-btn">Пропустить</button>
+          <div class="side-tab-panels">
+            <div class="side-tab-panel active" data-side-panel="turn">
+              <div class="turn-card">
+                <h2 id="currentPlayerName">Игрок</h2>
+                <p id="diceResult">Кубики: —</p>
+                <p id="turnTimer" class="turn-timer">Таймер: —</p>
+                <button id="rollDiceBtn">Бросить кубики</button>
+                <button id="skipDisconnectedBtn" class="secondary-btn hidden">
+                  Пропустить отключённого
+                </button>
+              </div>
+
+              <div id="cellInfo" class="cell-info">
+                <h3>Клетка</h3>
+                <p>Информация появится после хода.</p>
+              </div>
+
+              <div id="propertyActions" class="property-actions hidden">
+                <button id="buyPropertyBtn">Купить</button>
+                <button id="skipPropertyBtn" class="secondary-btn">Пропустить</button>
+              </div>
+
+              <div id="propertyDock" class="property-dock"></div>
+            </div>
+
+            <div class="side-tab-panel" data-side-panel="players">
+              <div id="playersList" class="players-list"></div>
+            </div>
+
+            <div class="side-tab-panel" data-side-panel="log">
+              <div id="gameLog" class="game-log"></div>
+            </div>
+
+            <div class="side-tab-panel" data-side-panel="chat">
+              <div id="chatBox" class="chat-box hidden"></div>
+            </div>
           </div>
-
-          <div id="playersList" class="players-list"></div>
-
-          <div id="chatBox" class="chat-box hidden"></div>
-
-          <div id="gameLog" class="game-log"></div>
         </aside>
       </main>
     </div>

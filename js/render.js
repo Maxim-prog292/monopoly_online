@@ -15,8 +15,10 @@ import {
 } from "./gameLogic.js";
 
 export function render(state, elements, options = {}) {
-  renderBoard(state, elements.board);
+  renderBoard(state, elements.board, options);
+  renderPlayersStrip(state, elements.playersStrip);
   renderPlayers(state, elements.playersList, options);
+  renderPropertyDock(state, elements.propertyDock, options);
   renderTurn(state, elements.currentPlayerName);
   renderDice(state, elements.diceResult);
   renderCellInfo(state, elements.cellInfo, options);
@@ -25,7 +27,43 @@ export function render(state, elements, options = {}) {
   updateRollButton(state, elements, options);
 }
 
-function renderBoard(state, board) {
+function renderPlayersStrip(state, playersStrip) {
+  if (!playersStrip) return;
+
+  playersStrip.innerHTML = state.players
+    .map((player, index) => {
+      const token = getTokenOption(player.tokenId);
+      const isActive = index === state.currentPlayerIndex;
+      const position = state.cells[player.position]?.title ?? "Старт";
+      const status = player.bankrupt
+        ? "Банкрот"
+        : player.disconnected
+          ? "Отключён"
+          : player.inTver
+            ? "В деревне"
+            : isActive
+              ? "Ходит"
+              : "Ждёт";
+
+      return `
+        <div class="player-strip-card ${isActive ? "active" : ""} ${player.bankrupt ? "bankrupt" : ""}">
+          <span class="token token-emoji" style="background:${token.color}">${token.icon}</span>
+          <div class="player-strip-main">
+            <strong>${player.name}</strong>
+            <span>${status}</span>
+          </div>
+          <div class="player-strip-stat">
+            <b>${player.money}₽</b>
+            <span>${player.properties.length} объект.</span>
+          </div>
+          <div class="player-strip-position">${position}</div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderBoard(state, board, options = {}) {
   board.innerHTML = "";
 
   for (let gridIndex = 0; gridIndex < 121; gridIndex++) {
@@ -40,7 +78,10 @@ function renderBoard(state, board) {
 
     const cell = state.cells[cellIndex];
     const cellEl = document.createElement("div");
-    cellEl.className = `cell ${cell.type}`;
+    cellEl.className = `cell ${cell.type} ${getCellSideClass(cellIndex)}`;
+    cellEl.dataset.cellIndex = cellIndex;
+    cellEl.dataset.cellId = cell.id;
+    cellEl.title = cell.title;
 
     if (cell.group) {
       cellEl.classList.add(`group-${cell.group}`);
@@ -54,6 +95,26 @@ function renderBoard(state, board) {
       cellEl.classList.add("mortgaged");
     }
 
+    if (options.selectedCellId === cell.id) {
+      cellEl.classList.add("selected");
+    }
+
+    if (options.movePath?.includes(cellIndex)) {
+      cellEl.classList.add("move-path");
+    }
+
+    if (options.completedMovePath?.includes(cellIndex)) {
+      cellEl.classList.add("move-path-completed");
+    }
+
+    if (options.moveTargetPosition === cellIndex) {
+      cellEl.classList.add("move-target");
+    }
+
+    const visualPositions = options.visualPositions ?? {};
+    const playersOnCell = state.players.filter(
+      (player) => (visualPositions[player.id] ?? player.position) === cellIndex,
+    );
     const owner = cell.ownerId
       ? state.players.find((player) => player.id === cell.ownerId)
       : null;
@@ -66,28 +127,39 @@ function renderBoard(state, board) {
       cellEl.classList.add("monopoly");
     }
 
-    const playersOnCell = state.players.filter(
-      (player) => player.position === cellIndex,
-    );
+    if (playersOnCell.some((player) => player.id === state.players[state.currentPlayerIndex]?.id)) {
+      cellEl.classList.add("current-player-cell");
+    }
+
+    const ownerInitial = owner?.name?.trim()?.slice(0, 1).toUpperCase() ?? "";
+    const houses = Math.max(0, cell.houses ?? 0);
 
     cellEl.innerHTML = `
       ${group ? `<div class="cell-group-strip" style="background:${group.color}"></div>` : ""}
       <div class="cell-title">${cell.title}</div>
       ${group ? `<div class="cell-group-name">${group.title}</div>` : ""}
       ${cell.price ? `<div class="cell-price">${cell.mortgaged ? "Залог" : `${cell.price}₽${hasMonopoly ? ` · ${rentInfo.amount}₽` : ""}`}</div>` : ""}
-      ${cell.houses ? `<div class="cell-houses">${"🏠".repeat(cell.houses)}</div>` : ""}
+      ${
+        houses
+          ? `<div class="cell-houses" aria-label="Домов: ${houses}">
+              ${Array.from({ length: houses }, () => "<span></span>").join("")}
+            </div>`
+          : ""
+      }
+      ${cell.mortgaged ? "<div class=\"mortgage-ribbon\">Залог</div>" : ""}
       ${
         owner
-          ? `<div class="cell-owner" style="background:${owner.tokenColor}"></div>`
+          ? `<div class="cell-owner" style="background:${owner.tokenColor}" title="Владелец: ${owner.name}">${ownerInitial}</div>`
           : ""
       }
       <div class="tokens">
         ${playersOnCell
           .map((player) => {
             const token = getTokenOption(player.tokenId);
+            const isMoving = visualPositions[player.id] !== undefined;
 
             return `
-              <span class="token token-emoji" style="background:${token.color}">${token.icon}</span>
+              <span class="token token-emoji ${isMoving ? "is-moving" : ""}" style="background:${token.color}">${token.icon}</span>
             `;
           })
           .join("")}
@@ -173,6 +245,217 @@ function renderPlayers(state, playersList, options = {}) {
 
     playersList.appendChild(card);
   });
+}
+
+function renderPropertyDock(state, propertyDock, options = {}) {
+  if (!propertyDock) return;
+
+  const mode = options.propertyDockMode === "all" ? "all" : "mine";
+  const currentPlayer = getCurrentPlayer(state);
+  const activePlayer = options.isOnline
+    ? state.players.find((player) => player.id === options.playerId)
+    : currentPlayer.properties.length
+      ? currentPlayer
+      : state.players.find((player) => player.properties.length);
+
+  if (!activePlayer && mode === "mine") {
+    propertyDock.classList.add("hidden");
+    propertyDock.innerHTML = "";
+    return;
+  }
+
+  const dockGroups =
+    mode === "all"
+      ? state.players
+          .map((player) => ({
+            player,
+            cells: player.properties.map((propertyId) => getCellById(state, propertyId)).filter(Boolean),
+          }))
+          .filter((group) => group.cells.length)
+      : [
+          {
+            player: activePlayer,
+            cells: activePlayer.properties.map((propertyId) => getCellById(state, propertyId)).filter(Boolean),
+          },
+        ];
+  const totalOwnedCells = dockGroups.reduce((total, group) => total + group.cells.length, 0);
+
+  if (!totalOwnedCells) {
+    propertyDock.classList.add("hidden");
+    propertyDock.innerHTML = "";
+    return;
+  }
+
+  propertyDock.classList.remove("hidden");
+  propertyDock.innerHTML = `
+    <div class="property-dock-head">
+      <strong>${mode === "all" ? "Собственность игроков" : `Собственность: ${activePlayer.name}`}</strong>
+      <div class="property-dock-controls">
+        <button type="button" data-property-dock-mode="mine" class="${mode === "mine" ? "active" : ""}">Моё</button>
+        <button type="button" data-property-dock-mode="all" class="${mode === "all" ? "active" : ""}">Все</button>
+        <span>${totalOwnedCells}</span>
+      </div>
+    </div>
+    <div class="property-card-row">
+      ${dockGroups
+        .map((group) => `
+          <div class="property-owner-group">
+            ${mode === "all" ? renderPropertyOwnerLabel(group.player) : ""}
+            ${renderPropertyGroupSections(state, group.player, group.cells, {
+              ...options,
+              canManageDockCard: mode === "mine",
+              showOwnerBadge: mode === "all",
+              showTradeAction: mode === "all",
+            })}
+          </div>
+        `)
+        .join("")}
+    </div>
+  `;
+}
+
+function renderPropertyCard(state, player, cell, options = {}) {
+  const group = cell.group ? getPropertyGroup(cell.group) : null;
+  const rentInfo = getRentInfo(state, cell);
+  const currentPlayer = getCurrentPlayer(state);
+  const canManage =
+    options.canManageDockCard !== false &&
+    (!options.isOnline || player.id === options.playerId) &&
+    (state.turnPhase === TURN_PHASES.WAITING_ROLL ||
+      (state.turnPhase === TURN_PHASES.WAITING_DEBT_RESOLUTION && state.debtPlayerId === player.id));
+  const canOfferTrade =
+    options.showTradeAction &&
+    currentPlayer &&
+    currentPlayer.id !== player.id &&
+    (!options.isOnline || currentPlayer.id === options.playerId) &&
+    state.turnPhase === TURN_PHASES.WAITING_ROLL &&
+    !state.pendingTrade &&
+    !player.bankrupt &&
+    (cell.houses ?? 0) === 0;
+  const canBuild = canBuildHouse(state, player.id, cell.id);
+  const houseCost = getHouseCost(cell);
+  const mortgageValue = getMortgageValue(cell);
+  const redeemCost = getRedeemCost(cell);
+
+  return `
+    <article
+      class="property-card ${cell.mortgaged ? "is-mortgaged" : ""} ${options.selectedCellId === cell.id ? "is-selected" : ""}"
+      data-cell-id="${cell.id}"
+      tabindex="0"
+      style="--property-color:${group?.color ?? "#8fa0b0"}"
+    >
+      <div class="property-card-strip"></div>
+      ${options.showOwnerBadge ? `<div class="property-card-owner" style="background:${player.tokenColor}">${player.name.slice(0, 1).toUpperCase()}</div>` : ""}
+      <div class="property-card-title">${cell.title}</div>
+      <div class="property-card-meta">${group?.title ?? getCellTypeLabel(cell)}</div>
+      <div class="property-card-stats">
+        <span>${cell.price ?? 0}₽</span>
+        <span>Аренда ${rentInfo.amount ?? cell.rent ?? 0}₽</span>
+      </div>
+      ${
+        cell.houses
+          ? `<div class="property-card-houses">${Array.from({ length: cell.houses }, () => "<span></span>").join("")}</div>`
+          : ""
+      }
+      ${cell.mortgaged ? "<div class=\"property-card-flag\">Залог</div>" : ""}
+      ${
+        canManage
+          ? `<div class="property-card-actions">
+              ${
+                canBuild
+                  ? `<button class="build-house-btn" data-cell-id="${cell.id}">Дом ${houseCost}₽</button>`
+                  : ""
+              }
+              ${
+                (cell.houses ?? 0) > 0
+                  ? `<button class="asset-action-btn" data-action="sell-house" data-cell-id="${cell.id}">Продать дом</button>`
+                  : ""
+              }
+              ${
+                !cell.mortgaged && (cell.houses ?? 0) === 0
+                  ? `<button class="asset-action-btn" data-action="sell-property" data-cell-id="${cell.id}">Продать +${mortgageValue}₽</button>
+                    <button class="asset-action-btn" data-action="mortgage" data-cell-id="${cell.id}">Заложить +${mortgageValue}₽</button>`
+                  : ""
+              }
+              ${
+                cell.mortgaged && state.turnPhase === TURN_PHASES.WAITING_ROLL
+                  ? `<button class="asset-action-btn" data-action="redeem" data-cell-id="${cell.id}" ${player.money < redeemCost ? "disabled" : ""}>Выкупить ${redeemCost}₽</button>`
+                  : ""
+              }
+            </div>`
+          : ""
+      }
+      ${
+        canOfferTrade
+          ? `<div class="property-card-actions trade-card-actions">
+              <button
+                class="trade-action-btn"
+                data-action="propose"
+                data-target-player-id="${player.id}"
+                data-cell-id="${cell.id}"
+              >
+                Предложить сделку
+              </button>
+            </div>`
+          : ""
+      }
+    </article>
+  `;
+}
+
+function renderPropertyGroupSections(state, player, cells, options = {}) {
+  return `
+    <div class="property-owner-cards">
+      ${getDockPropertyGroups(cells)
+        .map((group) => {
+          const groupInfo = group.id === "business" ? null : getPropertyGroup(group.id);
+          const isMonopoly =
+            group.id !== "business" && group.cells.every((cell) => cell.ownerId === player.id) && ownsFullGroup(state, player.id, group.id);
+
+          return `
+            <section class="property-color-section ${isMonopoly ? "is-monopoly" : ""}" style="--property-color:${groupInfo?.color ?? "#8fa0b0"}">
+              <div class="property-color-title">
+                <span></span>
+                <strong>${groupInfo?.title ?? "Бизнесы"}</strong>
+                <em>${group.cells.length}</em>
+              </div>
+              <div class="property-color-cards">
+                ${group.cells.map((cell) => renderPropertyCard(state, player, cell, options)).join("")}
+              </div>
+            </section>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function getDockPropertyGroups(cells) {
+  const groups = [];
+
+  cells.forEach((cell) => {
+    const groupId = cell.group || "business";
+    let group = groups.find((item) => item.id === groupId);
+
+    if (!group) {
+      group = { id: groupId, cells: [] };
+      groups.push(group);
+    }
+
+    group.cells.push(cell);
+  });
+
+  return groups;
+}
+
+function renderPropertyOwnerLabel(player) {
+  return `
+    <div class="property-owner-label">
+      <span class="property-owner-token" style="background:${player.tokenColor}">${player.name.slice(0, 1).toUpperCase()}</span>
+      <strong>${player.name}</strong>
+      ${player.disconnected ? "<em>отключён</em>" : ""}
+    </div>
+  `;
 }
 
 function renderOwnershipOverview(state) {
@@ -284,6 +567,11 @@ function renderAssetActions(state, player, ownedCells) {
 
       if (!cell.mortgaged && (cell.houses ?? 0) === 0) {
         buttons.push(`
+          <button class="asset-action-btn" data-action="sell-property" data-cell-id="${cell.id}">
+            Продать: ${cell.title} · +${getMortgageValue(cell)}₽
+          </button>
+        `);
+        buttons.push(`
           <button class="asset-action-btn" data-action="mortgage" data-cell-id="${cell.id}">
             Заложить: ${cell.title} · +${getMortgageValue(cell)}₽
           </button>
@@ -368,16 +656,46 @@ function getTurnStatusText(state, player) {
 
 function renderDice(state, diceResult) {
   if (!state.lastDice) {
-    diceResult.textContent = "Кубики: —";
+    diceResult.className = "dice-result is-empty";
+    diceResult.innerHTML = `
+      <span class="dice-label">Кубики</span>
+      <span class="dice-placeholder">—</span>
+    `;
     return;
   }
 
   const { dice1, dice2, total, isDouble } = state.lastDice;
-  diceResult.textContent = `Кубики: ${dice1} + ${dice2} = ${total}${isDouble ? " · дубль" : ""}`;
+  diceResult.className = `dice-result ${isDouble ? "is-double" : ""}`;
+  diceResult.innerHTML = `
+    <span class="dice-label">Кубики</span>
+    <span class="dice-pair" aria-label="${dice1} и ${dice2}">
+      ${renderDie(dice1)}
+      ${renderDie(dice2)}
+    </span>
+    <span class="dice-total">${dice1} + ${dice2} = ${total}${isDouble ? " · дубль" : ""}</span>
+  `;
+}
+
+function renderDie(value) {
+  const safeValue = Math.min(6, Math.max(1, Number(value) || 1));
+
+  return `
+    <span class="die die-${safeValue}" aria-label="${safeValue}">
+      ${Array.from({ length: 9 }, (_, index) => {
+        const pip = index + 1;
+        return `<span class="pip pip-${pip}"></span>`;
+      }).join("")}
+    </span>
+  `;
 }
 
 function renderCellInfo(state, cellInfo, options = {}) {
   let extraInfo = "";
+  const selectedCell = options.selectedCellId ? getCellById(state, options.selectedCellId) : null;
+
+  if (selectedCell) {
+    extraInfo += renderSelectedCellInfo(state, selectedCell);
+  }
 
   if (state.turnPhase === TURN_PHASES.WAITING_PROPERTY_DECISION) {
     const cell = getCellById(state, state.pendingPropertyCellId);
@@ -423,6 +741,39 @@ function renderCellInfo(state, cellInfo, options = {}) {
     ${renderWinnerInfo(state)}
     ${extraInfo}
   `;
+}
+
+function renderSelectedCellInfo(state, cell) {
+  const group = cell.group ? getPropertyGroup(cell.group) : null;
+  const owner = cell.ownerId ? state.players.find((player) => player.id === cell.ownerId) : null;
+  const rentInfo = cell.price ? getRentInfo(state, cell) : null;
+  const playersOnCell = state.players.filter((player) => player.position === state.cells.indexOf(cell));
+  const typeLabel = getCellTypeLabel(cell);
+
+  return `
+    <div class="selected-cell-info">
+      <strong>${cell.title}</strong>
+      <div>${typeLabel}</div>
+      ${group ? `<span class="property-group-label" style="border-color:${group.color}">${group.title}</span>` : ""}
+      ${cell.price ? `<div>Стоимость: ${cell.price}₽</div>` : ""}
+      ${cell.rent ? `<div>Базовая аренда: ${cell.rent}₽${rentInfo?.amount ? ` · сейчас ${rentInfo.amount}₽` : ""}</div>` : ""}
+      ${owner ? `<div>Владелец: ${owner.name}</div>` : cell.price ? "<div>Свободно для покупки</div>" : ""}
+      ${cell.houses ? `<div>Домов: ${cell.houses}</div>` : ""}
+      ${cell.mortgaged ? "<div>В залоге</div>" : ""}
+      ${playersOnCell.length ? `<div>На клетке: ${playersOnCell.map((player) => player.name).join(", ")}</div>` : ""}
+    </div>
+  `;
+}
+
+function getCellTypeLabel(cell) {
+  if (cell.type === "street") return "Улица";
+  if (cell.type === "business") return "Бизнес";
+  if (cell.type === "corner") return "Угловое поле";
+  if (cell.type === "chance") return "Карточка шанса";
+  if (cell.type === "tax") return "Налоговое поле";
+  if (cell.type === "gift") return "Подарок";
+  if (cell.type === "bank") return "Банк";
+  return "Поле";
 }
 
 function renderGameSettingsSummary(state) {
@@ -498,6 +849,7 @@ function renderGameLog(state, gameLog) {
   if (!gameLog) return;
 
   const logs = Array.isArray(state.logs) ? state.logs : [];
+  const tradeHistory = Array.isArray(state.tradeHistory) ? state.tradeHistory : [];
 
   gameLog.innerHTML = `
     <h3>Лог партии</h3>
@@ -508,6 +860,23 @@ function renderGameLog(state, gameLog) {
         .map((entry) => `<div><span>${entry.time}</span> ${entry.message}</div>`)
         .join("")}
     </div>
+    ${
+      tradeHistory.length
+        ? `<div class="trade-history">
+            <strong>История сделок</strong>
+            ${tradeHistory
+              .slice(-8)
+              .reverse()
+              .map((entry) => `
+                <div class="trade-history-entry ${entry.type}">
+                  <span>${entry.time}</span>
+                  ${entry.message}
+                </div>
+              `)
+              .join("")}
+          </div>`
+        : ""
+    }
   `;
 }
 
@@ -557,4 +926,12 @@ function getCellIndexByGridIndex(gridIndex) {
   if (col === 10) return 30 + row;
 
   return null;
+}
+
+function getCellSideClass(cellIndex) {
+  if ([0, 10, 20, 30].includes(cellIndex)) return "side-corner";
+  if (cellIndex > 0 && cellIndex < 10) return "side-bottom";
+  if (cellIndex > 10 && cellIndex < 20) return "side-left";
+  if (cellIndex > 20 && cellIndex < 30) return "side-top";
+  return "side-right";
 }
